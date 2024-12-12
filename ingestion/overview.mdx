@@ -132,6 +132,10 @@ RisingWave supports reading data from file sources including AWS S3, GCS, and Az
 
 ### Batch reading from file source
 
+<Note>
+Batch reading from file source is newly introduced in version 2.1 and is not supported in versions prior to 2.1. If you want to use it, please upgrade to version 2.1.
+</Note>
+
 To read data in batch from file sources, you need to create a materialized view from the source or create a table with the appropriate connector. You can also directly query the file source. Below are examples using AWS S3.
 
 ```sql

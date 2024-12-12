@@ -133,6 +133,10 @@ File sink currently supports only append-only mode, so please change the query t
 
 ## Batching strategy for file sink
 
+<Note>
+Batching strategy for file sink is newly introduced in version 2.1 and is not supported in versions prior to 2.1. If you want to use it, please upgrade to version 2.1.
+</Note>
+
 RisingWave implements batching strategies for file sinks to optimize file management by preventing the generation of numerous small files. The batching strategy is available for Parquet, JSON, and CSV encode. 
 
 ### Category
