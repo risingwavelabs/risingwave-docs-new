@@ -92,6 +92,9 @@ When creating a source in RisingWave, you can specify the following Kafka parame
 | queued.min.messages                   | properties.queued.min.messages                   | int     |
 | receive.message.max.bytes             | properties.receive.message.max.bytes             | int     |
 | ssl.endpoint.identification.algorithm | properties.ssl.endpoint.identification.algorithm | str     |
+| statistics.interval.ms                | properties.statistics.interval.ms                | int     |
+
+To monitor Kafka metrics in Grafana, set `properties.statistics.interval.ms` to a non-zero value. The granularity is 1000ms.
 
 The additional Kafka parameters `queued.min.messages` and `queued.max.messages.kbytes` are specified with `properties.queued.min.messages` and `properties.queued.max.messages.kbytes`, respectively, when creating the source.
 
