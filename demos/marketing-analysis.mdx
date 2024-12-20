@@ -1,0 +1,248 @@
+---
+title: "Marketing campaign performance analysis"
+description: "Analyze and optimize marketing campaign performance in real-time."
+---
+
+## Overview
+
+In a fast-paced marketing environment, marketers and campaign managers must collaborate to optimize customer engagement and maximize conversion rates. Measuring the impact of each new marketing campaign quickly and accurately is challenging, which can lead to missed opportunities. Being able to promptly determine whether or not a campaign was effective allows the business to adjust marketing strategies dynamically in response to customer behavior. 
+
+Real-time processing and analysis of customer engagement data enables analysts to monitor campaign performance as it happens. They can determine what strategies are working and adapt based on emerging trends. This approach improves ROI and ensures marketing efforts are appealing to customer preferences.
+
+In this tutorial, you will learn how to analyze the effects of a market campaign in real-time.
+
+## Prerequisites
+
+* Ensure that the [PostgreSQL](https://www.postgresql.org/docs/current/app-psql.html) interactive terminal, `psql`, is installed in your environment. For detailed instructions, see [Download PostgreSQL](https://www.postgresql.org/download/).
+* Install and run RisingWave. For detailed instructions on how to quickly get started, see the [Quick start](/get-started/quickstart/) guide.
+* Ensure that a Python environment is set up and install the [psycopg2](https://pypi.org/project/psycopg2/) library. 
+
+## Step 1: Set up the data source tables
+
+Once RisingWave is installed and deployed, run the three SQL queries below to set up the tables. You will insert data into these tables to simulate live data streams.
+
+1. The `marketing_events` table tracks user interactions with marketing campaigns and includes details, such as the number of clicks and impressions, of each event.
+
+    ```sql
+    CREATE TABLE marketing_events (
+        event_id varchar PRIMARY KEY,
+        user_id integer,
+        campaign_id varchar,
+        channel_type varchar,  -- email, social, search, display
+        event_type varchar,    -- impression, click, conversion
+        amount numeric,        -- conversion amount if applicable
+        utm_source varchar,
+        utm_medium varchar,
+        utm_campaign varchar,
+        timestamp timestamptz DEFAULT CURRENT_TIMESTAMP
+    );
+    ```
+
+2. The `campaigns` table stores information about each marketing campaign, such as what type of campaign it was and the target audience.
+
+    ```sql
+    CREATE TABLE campaigns (
+        campaign_id varchar PRIMARY KEY,
+        campaign_name varchar,
+        campaign_type varchar,  -- regular, ab_test
+        start_date timestamptz,
+        end_date timestamptz,
+        budget numeric,
+        target_audience varchar
+    );
+    ```
+
+3. The `ab_test_variants` contains details, such as the variant type and name, about A/B test variations for campaigns. 
+
+    ```sql
+    CREATE TABLE ab_test_variants (
+        variant_id varchar PRIMARY KEY,
+        campaign_id varchar,
+        variant_name varchar,  -- A, B, Control
+        variant_type varchar,  -- subject_line, creative, landing_page
+        content_details varchar
+    );
+    ```
+
+## Step 2: Run the data generator
+
+To keep this demo simple, a Python script is used to generate and insert data into the tables created above. 
+
+Clone the [awesome-stream-processing](https://github.com/risingwavelabs/awesome-stream-processing) repository.
+
+```bash
+git clone https://github.com/risingwavelabs/awesome-stream-processing.git
+```
+
+Navigate to the [market_analysis](https://github.com/risingwavelabs/awesome-stream-processing/tree/main/02-simple-demos/e_commerce/marketing_analysis) folder.
+
+```bash
+cd awesome-stream-processing/tree/main/02-simple-demos/e_commerce/marketing_analysis
+```
+
+Run the `data_generator.py` file. This Python script utilizes the `psycopg2` library to establish a connection with RisingWave so you can generate and insert synthetic data into the three tables described above. 
+
+If you are not running RisingWave locally or using default credentials, update the connection parameters accordingly:
+
+```python
+default_params = {
+    "dbname": "dev",
+    "user": "root",
+    "password": "",
+    "host": "localhost",
+    "port": "4566"
+}
+```
+
+## Step 3: Create materialized views
+
+In this demo, you will create multiple materialized views to investigate the efficacy of marketing campaigns.
+
+Materialized views contain the results of a view expression and are stored in the RisingWave database. The results of a materialized view are computed incrementally and updated whenever new events arrive and do not require to be refreshed. When you query from a materialized view, it will return the most up-to-date computation results.
+
+### Evaluate campaign metrics
+
+The `campaign_performance` materialized view summarizes the performance metrics of the marketing campaigns over 1-hour time windows. The `tumble` function is used to map each event into a 1-hour time window.
+
+You will gain insight into key performance indicators for each campaign, such as the number of impressions, clicks, and conversions.
+
+```sql
+CREATE MATERIALIZED VIEW campaign_performance AS
+SELECT
+    window_start,
+    window_end,
+    c.campaign_id,
+    c.campaign_name,
+    c.campaign_type,
+    COUNT(DISTINCT CASE WHEN event_type = 'impression' THEN me.event_id END) as impressions,
+    COUNT(DISTINCT CASE WHEN event_type = 'click' THEN me.event_id END) as clicks,
+    COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN me.event_id END) as conversions,
+    SUM(CASE WHEN event_type = 'conversion' THEN amount ELSE 0 END) as revenue,
+    COUNT(DISTINCT CASE WHEN event_type = 'click' THEN me.event_id END)::float /
+        NULLIF(COUNT(DISTINCT CASE WHEN event_type = 'impression' THEN me.event_id END), 0) as ctr,
+    COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN me.event_id END)::float /
+        NULLIF(COUNT(DISTINCT CASE WHEN event_type = 'click' THEN me.event_id END), 0) as conversion_rate
+FROM TUMBLE(marketing_events, timestamp, INTERVAL '1 HOUR') as me
+JOIN campaigns c ON me.campaign_id = c.campaign_id
+GROUP BY
+    window_start,
+    window_end,
+    c.campaign_id,
+    c.campaign_name,
+    c.campaign_type;
+```
+
+You can query from `campaign_performance` to see the results. 
+
+```sql
+SELECT * FROM campaign_performance LIMIT 5;
+```
+
+```
+       window_start        |        window_end         |  campaign_id  | campaign_name | campaign_type | impressions | clicks | conversions | revenue  |        ctr         |  conversion_rate   
+---------------------------+---------------------------+---------------+---------------+---------------+-------------+--------+-------------+----------+--------------------+--------------------
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_04733bc2 | Campaign 7    | regular       |         114 |    149 |         125 | 33242.69 | 1.3070175438596492 | 0.8389261744966443
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_3d30ac7d | Campaign 4    | regular       |         173 |    160 |         149 | 42910.78 | 0.9248554913294798 |            0.93125
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_32072343 | Campaign 2    | ab_test       |         154 |    139 |         138 | 36509.81 | 0.9025974025974026 | 0.9928057553956835
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_8d14a26f | Campaign 9    | ab_test       |         127 |    146 |         155 | 44141.92 | 1.1496062992125984 | 1.0616438356164384
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_93d85763 | Campaign 10   | ab_test       |         161 |    119 |         158 | 42155.77 | 0.7391304347826086 | 1.3277310924369747
+```
+
+### Analyze marketing channels
+
+The `channel_attribution` materialized view analyzes the marketing performance over 1-hour time windows. Again, the `tumble` function is used to map each event into a 1-hour time window. Then, you group by the time window and channel type to find the aggregate channel metrics.
+
+This materialized view helps to show the effectiveness of each marketing channel in driving conversion and revenue. It provides details such as the number of unique, engaged users, and the total revenue generated by each channel.
+
+```sql
+CREATE MATERIALIZED VIEW channel_attribution AS
+SELECT
+    window_start,
+    window_end,
+    channel_type,
+    utm_source,
+    utm_medium,
+    COUNT(DISTINCT user_id) as unique_users,
+    COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN event_id END) as conversions,
+    SUM(CASE WHEN event_type = 'conversion' THEN amount ELSE 0 END) as revenue,
+    SUM(CASE WHEN event_type = 'conversion' THEN amount ELSE 0 END) /
+        NULLIF(COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN event_id END), 0) as avg_order_value
+FROM TUMBLE(marketing_events, timestamp, INTERVAL '1 HOUR')
+GROUP BY
+    window_start,
+    window_end,
+    channel_type,
+    utm_source,
+    utm_medium;
+```
+
+You can query from `channel_attribution` to see the results. 
+
+```sql
+SELECT * FROM channel_attribution LIMIT 5;
+```
+```
+       window_start        |        window_end         | channel_type | utm_source | utm_medium | unique_users | conversions | revenue |        avg_order_value         
+---------------------------+---------------------------+--------------+------------+------------+--------------+-------------+---------+--------------------------------
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | display      | email      | organic    |           49 |          20 | 5534.39 |                       276.7195
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | display      | linkedin   | email      |           49 |          18 | 5004.84 | 278.04666666666666666666666667
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | display      | linkedin   | organic    |           55 |          15 | 4298.15 | 286.54333333333333333333333333
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | display      | linkedin   | social     |           51 |          15 | 4523.88 |                       301.5920
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | email        | google     | email      |           46 |          18 | 5315.16 | 295.28666666666666666666666667
+```
+
+### Assess A/B tests
+
+The `ab_test_results` materialized view analyzes the results of the A/B test over 1-hour time windows. A multi-way join is used to retrieve campaign details and details on the test variations. 
+
+This materialized view allows you to evaluate the A/B test and determine which test variant performed best. From there, you can make more informed decisions on which marketing campaign to move forward with.
+
+```sql
+CREATE MATERIALIZED VIEW ab_test_results AS
+SELECT
+    window_start,
+    window_end,
+    c.campaign_id,
+    c.campaign_name,
+    av.variant_name,
+    av.variant_type,
+    COUNT(DISTINCT CASE WHEN event_type = 'impression' THEN me.event_id END) as impressions,
+    COUNT(DISTINCT CASE WHEN event_type = 'click' THEN me.event_id END) as clicks,
+    COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN me.event_id END) as conversions,
+    SUM(CASE WHEN event_type = 'conversion' THEN amount ELSE 0 END) as revenue,
+    COUNT(DISTINCT CASE WHEN event_type = 'conversion' THEN me.event_id END)::float /
+        NULLIF(COUNT(DISTINCT CASE WHEN event_type = 'click' THEN me.event_id END), 0) as conversion_rate
+FROM TUMBLE(marketing_events, timestamp, INTERVAL '1 HOUR') as me
+JOIN campaigns c ON me.campaign_id = c.campaign_id
+JOIN ab_test_variants av ON c.campaign_id = av.campaign_id
+WHERE c.campaign_type = 'ab_test'
+GROUP BY
+    window_start,
+    window_end,
+    c.campaign_id,
+    c.campaign_name,
+    av.variant_name,
+    av.variant_type;
+```
+
+You can query from `ab_test_results` to see the results.
+
+```sql
+SELECT * FROM ab_test_results LIMIT 5;
+```
+```
+       window_start        |        window_end         |  campaign_id  | campaign_name | variant_name | variant_type | impressions | clicks | conversions | revenue  |  conversion_rate   
+---------------------------+---------------------------+---------------+---------------+--------------+--------------+-------------+--------+-------------+----------+--------------------
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_93d85763 | Campaign 10   | A            | creative     |         213 |    166 |         207 | 55158.84 | 1.2469879518072289
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_93d85763 | Campaign 10   | B            | creative     |         213 |    166 |         207 | 55158.84 | 1.2469879518072289
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_93d85763 | Campaign 10   | Control      | landing_page |         213 |    166 |         207 | 55158.84 | 1.2469879518072289
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_4537f3d7 | Campaign 3    | A            | landing_page |         160 |    191 |         165 | 45763.74 | 0.8638743455497382
+ 2024-12-20 00:00:00+00:00 | 2024-12-20 01:00:00+00:00 | camp_4537f3d7 | Campaign 3    | B            | creative     |         160 |    191 |         165 | 45763.74 | 0.8638743455497382
+```
+
+When finished, press `Ctrl+C` to close the connection between RisingWave and `psycopg2`.
+
+## Summary
+
+In this tutorial, you learn:
+- How to evaluate an A/B test in real time. 

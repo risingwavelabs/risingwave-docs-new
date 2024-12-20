@@ -920,6 +920,12 @@
           ]
         },
         {
+          "group": "E-Commerce",
+          "pages": [
+            "demos/marketing-analysis"
+          ]
+        },
+        {
           "group": "Sports betting",
           "pages": [
             "demos/betting-behavior-analysis",
