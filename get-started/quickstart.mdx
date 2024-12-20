@@ -137,7 +137,7 @@ Unlike other deployment modes, for instance [Docker Compose](/deploy/risingwave-
 
 For state store, we will use the embedded `LocalFs` Object Store, eliminating the need for an external service like `minio` or `s3`; for meta store, we will use the embedded `SQLite` database, eliminating the need for an external service like `etcd`.
 
-By default, the RisingWave standalone mode will store its data in `~/risingwave`, which includes both `Metadata` and `State Data`.
+By default, the RisingWave standalone mode will store its data in `~/.risingwave`, which includes both `Metadata` and `State Data`.
 
 For a batteries-included setup, with `monitoring` tools and external services like `kafka` fully included, you can use [Docker Compose](/deploy/risingwave-docker-compose) instead. If you would like to set up these external services manually, you may check out RisingWave's [Docker Compose](https://github.com/risingwavelabs/risingwave/blob/main/docker/docker-compose.yml), and run these services using the same configurations.
 
@@ -147,7 +147,7 @@ The instance of RisingWave standalone mode can run without any configuration. Ho
 
 The main options which new users may require would be the state store directory (`--state-store-directory`) and in-memory mode (`--in-memory`).
 
-`--state-store-directory` specifies the new directory where the cluster's `Metadata` and `State Data` will reside. The default is to store it in the `~/risingwave` folder.
+`--state-store-directory` specifies the new directory where the cluster's `Metadata` and `State Data` will reside. The default is to store it in the `~/.risingwave` folder.
 
 ```bash
 # Reconfigure RisingWave to be stored under 'projects' folder instead.
