@@ -98,6 +98,12 @@ Shared source improves resource utilization and data consistency when working wi
 This feature is currently in public preview, meaning it is nearing the final product but may not yet be fully stable. If you encounter any issues or have feedback, please reach out to us via our [Slack channel](https://www.risingwave.com/slack). Your input is valuable in helping us improve this feature. For more details, see our [Public Preview Feature List](/changelog/product-lifecycle#features-in-the-public-preview-stage).
 </Note>
 
+<Note>
+Shared Kafka source is available since version 2.1. Other sources are unaffected. We plan to gradually upgrade other sources to the be shared as well in the future.
+
+`ALTER SOURCE [ADD COLUMN | REFRESH SCHEMA]` for shared source is available since version 2.2.
+</Note>
+
 ### Configure
 
 Shared source is enabled by default. You can also set the session variable `streaming_use_shared_source` to control whether to enable it.
@@ -159,14 +165,6 @@ Tables offer other features that enhance their utility in data ingestion workflo
 <Frame>
   <img src="/images/table-with-connectors.png"/>
 </Frame>
-
-<Note>
-**LIMITATION**
-
-Currently, shared source is only applicable to Kafka sources. Other sources are unaffected. We plan to gradually upgrade other sources to the be shared as well in the future.
-
-Shared sources do not support `ALTER SOURCE`. Use non-shared sources if you require this functionality.
-</Note>
 
 ## See also
 
